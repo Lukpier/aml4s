@@ -1,18 +1,18 @@
-package aml4s
+package aml4s.extraction.timeseries
 
 import com.holdenkarau.spark.testing.DataFrameSuiteBase
 import org.scalatest._
-import matchers._
+import org.scalatest.matchers._
 import org.scalatest.wordspec.AnyWordSpec
 
-class TimeseriesSpec extends AnyWordSpec with should.Matchers with DataFrameSuiteBase {
+class TimeseriesDataFrameSpec extends AnyWordSpec with should.Matchers with DataFrameSuiteBase {
 
   "A timeserie df" when {
 
     "wideFormat method is called" should {
 
       "group by id cols and collect features into arrays" in {
-        import aml4s.timeseries.Timeseries.TimeserieDF
+        import aml4s.extraction.timeseries.TimeseriesDataFrame._
 
         val df = spark.read
           .option("inferSchema", "true")
@@ -40,7 +40,7 @@ class TimeseriesSpec extends AnyWordSpec with should.Matchers with DataFrameSuit
       "apply feature calculators to selected features" in {
         conf.set("spark.debug.maxToStringFields", "100")
 
-        import aml4s.timeseries.Timeseries.TimeserieDF
+        import aml4s.extraction.timeseries.TimeseriesDataFrame._
 
         val df = spark.read
           .option("inferSchema", "true")

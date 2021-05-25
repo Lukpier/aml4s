@@ -1,4 +1,4 @@
-package aml4s.timeseries
+package aml4s.extraction.timeseries
 
 import breeze.linalg._
 import breeze.numerics._
@@ -8,9 +8,7 @@ import org.apache.commons.math3.stat.descriptive.moment.{Kurtosis, Skewness}
 import org.apache.spark.ml.regression.LinearRegression
 import org.apache.spark.sql.Dataset
 
-sealed trait FeatureCalculators {}
-
-object TimeserieFeatureCalculators extends FeatureCalculators {
+object TimeserieFeatureCalculators {
 
   /** * Calculates the number of crossings of ts on 0. A crossing is defined as two sequential
     * values where the first value is lower than 0 and the next is greater, or vice-versa.

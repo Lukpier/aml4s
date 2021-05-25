@@ -1,14 +1,13 @@
-package aml4s.timeseries
+package aml4s.extraction.timeseries
 
 import breeze.linalg.DenseVector
 import aml4s.helper.SparkHelper
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions.{col, collect_list, sort_array, struct, udf}
+import TimeserieFeatureCalculators._
 
-object Timeseries {
-
-  import TimeserieFeatureCalculators._
-
+object TimeseriesDataFrame {
+  // TODO: make it configurable
   lazy val udfs = Map(
     ("zero_crossing", udf((ts: Seq[Double]) => zeroCrossing(DenseVector.apply(ts.toArray)))),
     ("fft", udf((ts: Seq[Double]) => fftCoefficient(DenseVector.apply(ts.toArray)))),
@@ -26,7 +25,7 @@ object Timeseries {
     )
   )
 
-  implicit class TimeserieDF(df: DataFrame) {
+  implicit class TimeseriesDataFrame(df: DataFrame) {
 
     def wideFormat(idCols: Seq[String], timeCol: String, featureCols: Seq[String]): DataFrame = {
 
@@ -48,21 +47,24 @@ object Timeseries {
       inputCols.foldLeft(df) { (tempDf, inputCol) =>
         {
 
-          SparkHelper.applyForArray(
-            df,
-            inputCol, {
+          SparkHelper
+            .applyForArray(
+              df,
+              inputCol, {
 
-              udfs.foldLeft(tempDf) { case (extractDf, (fnName, fn)) =>
-                extractDf.withColumn(s"${inputCol}_$fnName", fn(df.col(inputCol)))
+                udfs.foldLeft(tempDf) { case (extractDf, (fnName, fn)) =>
+                  extractDf.withColumn(s"${inputCol}_$fnName", fn(df.col(inputCol)))
+                }
+
               }
-
-            }
-          ).drop(col(inputCol)) /* dropping original feature */
+            )
+            .drop(col(inputCol)) /* dropping original feature */
 
         }
 
       }
     }
+
   }
 
 }
