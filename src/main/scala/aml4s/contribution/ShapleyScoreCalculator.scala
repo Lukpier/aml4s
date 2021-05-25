@@ -13,22 +13,6 @@ case class ShapleyScore(feature: String, contribution: Double, weight: Double)
 
 case class ShapleyScoreCalculator(implicit spark: SparkSession) {
 
-  def analyze[M <: Model[M]](
-      df: DataFrame,
-      model: SupervisedModel[M],
-      features: Seq[String],
-      idCol: String,
-      weightCol: Option[String],
-      idsToInvestigate: Seq[String]
-  ): DataFrame = {
-
-    val rowsToInvestigate = df.where(df.col(idCol) isin idsToInvestigate).collect()
-    val computed = rowsToInvestigate
-      .flatMap(row => computeShapleyForSample(df, idCol, model, row, features, weightCol))
-    spark.createDataFrame(computed).toDF(Seq("feature", "contribution", "weight"): _*)
-
-  }
-
   def computePermutations(partitionIndex: Int, features: Seq[String]): Iterator[String] = {
     RandBasis
       .withSeed(partitionIndex)
@@ -38,25 +22,7 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
       .toIterator
   }
 
-  /** Computes the shapley marginal contribution for each feature in the feature vector over all
-    * samples in the partition. The algorithm is based on a monte-carlo approximation:
-    * https://christophm.github.io/interpretable-ml-book/shapley.html#fn42
-    *
-    * @param partitionIndex
-    *   : Index of spark partition which will serve as a seed to numpy
-    * @param randRows
-    *   : Sampled rows of the dataset in the partition
-    * @param rowToInvestigate
-    *   Feature vector for which we need to compute shapley scores
-    * @param model
-    *   Spark ml Model object which implements the predict function.
-    * @param weightColName
-    *   column name with row weights to use when sampling the training set
-    * @return
-    *   Iterator of tuple of feature and shapley marginal contribution
-    */
-  def computeShapleyFeature(
-      partitionIndex: Int,
+  def computeFeatureVectorRows(
       idCol: String,
       randRows: Iterator[Row],
       rowToInvestigate: Row,
@@ -118,6 +84,14 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
 
   }
 
+  /** Computes the shapley marginal contribution for each feature in the feature vector over all
+   * samples in the partition. The algorithm is based on a monte-carlo approximation:
+   * https://christophm.github.io/interpretable-ml-book/shapley.html#fn42
+   *
+   *   : Index of spark partition which will serve as a seed to numpy
+   * @return
+   *   Map of feature -> tuple of shapley marginal contribution and feature weight
+   */
   def computeShapleyScore[M <: Model[M]](
       featureVectorRows: DataFrame,
       model: SupervisedModel[M],
@@ -166,6 +140,7 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
     }
 
     scores.groupBy(_.feature).mapValues { scs =>
+
       val (contributions, weights) = scs.map(sc => (sc.contribution, sc.weight)).unzip
       val bWeights                 = DenseVector.apply(weights.toArray)
       val bContributions           = DenseVector.apply(contributions.toArray)
@@ -209,10 +184,9 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
       .collect()
 
     val featureVectorRows = df.rdd
-      .mapPartitionsWithIndex(
-        { (idx, rows) =>
-          computeShapleyFeature(
-            idx,
+      .mapPartitions(
+        { rows =>
+          computeFeatureVectorRows(
             idCol,
             rows,
             rowToInvestigate,
