@@ -2,7 +2,10 @@ package aml4s.model
 
 import org.apache.spark.ml.Model
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.catalyst.dsl.expressions.{DslExpression, StringToAttributeConversionHelper}
+import org.apache.spark.sql.catalyst.dsl.expressions.{
+  DslExpression,
+  StringToAttributeConversionHelper
+}
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.{col, exp, expr, udf}
 
@@ -14,16 +17,15 @@ object Models {
 
   }
 
-  case class UnsupervisedModel[M <: Model[M]](model: M) extends CustomModel[M] {
+  case class UnsupervisedModel[M <: Model[M]](model: M) extends CustomModel[M] {}
 
+  case class SupervisedModel[M <: Model[M]](model: M, explainClass: Int = 1)
+    extends CustomModel[M] {
 
-  }
-
-  case class SupervisedModel[M <: Model[M]](model: M, explainClass: Int = 1) extends CustomModel[M] {
-
-    lazy val extractProbabilityClass: UserDefinedFunction = udf((probability: org.apache.spark.ml.linalg.Vector) => {
-      probability(explainClass)
-    })
+    lazy val extractProbabilityClass: UserDefinedFunction =
+      udf((probability: org.apache.spark.ml.linalg.Vector) => {
+        probability(explainClass)
+      })
 
     def predictionsWithProba(df: DataFrame): DataFrame = {
       val columns = df.columns ++ Seq("prediction", "probability")

@@ -25,13 +25,13 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
   }
 
   def computeFeatureVectorRows(
-                                partitionIndex: Int,
-                                idCol: String,
-                                randRows: Iterator[Row],
-                                rowToInvestigate: Row,
-                                features: Seq[String],
-                                weightColName: Option[String] = None
-                              ): Iterator[ShapleyFeature] = {
+      partitionIndex: Int,
+      idCol: String,
+      randRows: Iterator[Row],
+      rowToInvestigate: Row,
+      features: Seq[String],
+      weightColName: Option[String] = None
+  ): Iterator[ShapleyFeature] = {
 
     /* We cycle through permutations in cases where the number of samples is more than
      the number of features */
@@ -44,7 +44,7 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
 
     randRows.foreach { randRow =>
       /* take sample z from training set */
-      val weight = if (weightColName.isDefined) randRow.getAs(weightColName.get) else 1d
+      val weight             = if (weightColName.isDefined) randRow.getAs(weightColName.get) else 1d
       val featurePermutation = permutationIter.next()
       /* gather: {z_1, ..., z_p} */
 
@@ -66,7 +66,7 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
               featureName,
               rowToInvestigate.getAs[Double](featureName)
             )
-            )
+          )
         )
         /* x_-k = {x_1, ..., x_{k-1}, z_k, ..., z_p} */
         /* store (x_+k, x_-k) */
@@ -79,7 +79,7 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
               featureName,
               rowToInvestigate.getAs[Double](featureName)
             )
-            )
+          )
         )
       }
     }
@@ -95,17 +95,17 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
     * : Index of spark partition which will serve as a seed to numpy
     *
     * @return
-    * Map of feature -> tuple of shapley marginal contribution and feature weight
+    *   Map of feature -> tuple of shapley marginal contribution and feature weight
     */
   def computeShapleyScore[M <: Model[M]](
-                                          featureVectorRows: DataFrame,
-                                          model: SupervisedModel[M],
-                                          featureNames: Seq[String]
-                                        ): DataFrame = {
+      featureVectorRows: DataFrame,
+      model: SupervisedModel[M],
+      featureNames: Seq[String]
+  ): DataFrame = {
 
     import spark.implicits._
 
-    val weights = featureVectorRows.rdd.map(_.getAs[Double]("weight")).collect()
+    val weights = featureVectorRows.select("weight").collect().map(_.getAs[Double]("weight"))
 
     val explodedFeatures = featureVectorRows
       .withColumn("features", F.expr("explode(features)"))
@@ -123,55 +123,57 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
 
     val assembledFeatures = vectorAssembler.transform(explodedFeatures)
 
-    val predictions = model.predictionsWithProba(assembledFeatures)
+    val predictions  = model.predictionsWithProba(assembledFeatures)
     val predictProba = predictions.drop("prediction", "features")
 
-    predictProba.rdd.mapPartitionsWithIndex { (idx, preds) =>
+    predictProba.rdd
+      .mapPartitionsWithIndex { (idx, preds) =>
+        val featureIterator =
+          Iterator.continually(computePermutations(idx, featureNames).permutations).flatten.flatten
 
-      val featureIterator =
-        Iterator.continually(computePermutations(idx, featureNames).permutations).flatten.flatten
-
-      (for {
-        idx <- (0 until preds.size by 2)
-        pred <- preds
-        nextPred = preds.next()
-        feature = featureIterator.next()
-      } yield {
-        val marginalContribution = pred.getAs[Double]("probability") - nextPred.getAs[Double]("probability")
-        /* There is one weight added per random row visited.
+        (for {
+          idx  <- (0 until preds.size by 2)
+          pred <- preds
+          nextPred = preds.next()
+          feature  = featureIterator.next()
+        } yield {
+          val marginalContribution =
+            pred.getAs[Double]("probability") - nextPred.getAs[Double]("probability")
+          /* There is one weight added per random row visited.
            For each random row visit, we generate 2 predictions for each required feature.
            Therefore, to get index into rand_row_weights, we need to divide
            prediction index by number of features, and take the floor of this
-         */
-        val weight = weights(idx / featureNames.size)
-        (feature, marginalContribution, weight)
-      }).toIterator
-    }.toDF("feature", "marginal_contribution", "weight")
+           */
+          val weight = weights(idx / featureNames.size)
+          (feature, marginalContribution, weight)
+        }).toIterator
+      }
+      .toDF("feature", "marginal_contribution", "weight")
 
   }
 
   /** Compute shapley values for all features in a given feature vector of interest
     *
     * @param df
-    * : Training dataset
+    *   : Training dataset
     * @param model
-    * a Model object which implements the predictProba function.
+    *   a Model object which implements the predictProba function.
     * @param rowToInvestigate
-    * : Feature vector for which we need to compute shapley scores
+    *   : Feature vector for which we need to compute shapley scores
     * @param weightColName
-    * : column name with row weights to use when sampling the training set
+    *   : column name with row weights to use when sampling the training set
     * @return
-    * Map of feature mapping to its corresponding shapley value.
+    *   Map of feature mapping to its corresponding shapley value.
     */
 
   def computeShapleyForSample[M <: Model[M]](
-                                              df: DataFrame,
-                                              idCol: String,
-                                              model: SupervisedModel[M],
-                                              rowToInvestigate: Row,
-                                              features: Seq[String],
-                                              weightColName: Option[String] = None
-                                            ): Map[String, Double] = {
+      df: DataFrame,
+      idCol: String,
+      model: SupervisedModel[M],
+      rowToInvestigate: Row,
+      features: Seq[String],
+      weightColName: Option[String] = None
+  ): Map[String, Double] = {
 
     import spark.implicits._
 
@@ -193,18 +195,20 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
 
     val shapleyDf = computeShapleyScore(featureVectorRows, model, features)
 
-    shapleyDf.groupBy("feature").agg(
-
-      (
-        F.sum(shapleyDf.col("marginal_contribution") * shapleyDf.col("weight")) /
-          F.sum(shapleyDf.col("weight"))
-        ).alias("shapley_value"))
+    shapleyDf
+      .groupBy("feature")
+      .agg(
+        (
+          F.sum(shapleyDf.col("marginal_contribution") * shapleyDf.col("weight")) /
+            F.sum(shapleyDf.col("weight"))
+        ).alias("shapley_value")
+      )
       .collect()
       .map { row =>
         (row.getAs[String]("feature"), row.getAs[Double]("shapley_value"))
-      }.toMap
+      }
+      .toMap
 
   }
-
 
 }

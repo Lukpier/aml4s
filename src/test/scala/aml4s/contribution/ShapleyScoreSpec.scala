@@ -21,7 +21,6 @@ class ShapleyScoreSpec extends AnyWordSpec with Matchers with DataFrameSuiteBase
         .option("sep", ",")
         .csv("src/test/resources/data/sample_logistic_regression.csv")
 
-
       val shapleyScore = ShapleyScoreCalculator()(spark)
       val assembler    = new VectorAssembler()
       val cols         = df.columns.map(col => col.replace(" ", "_")).map(_.replace(".", ""))
@@ -35,7 +34,7 @@ class ShapleyScoreSpec extends AnyWordSpec with Matchers with DataFrameSuiteBase
           features,
           usingColumn = "Serial_No"
         )
-        .select("Serial_No","features", "Research")
+        .select("Serial_No", "features", "Research")
       df2.show()
       df2.printSchema()
       val model = SupervisedModel(
