@@ -141,7 +141,7 @@ case class ShapleyScoreCalculator(implicit spark: SparkSession) {
         /* There is one weight added per random row visited.
            For each random row visit, we generate 2 predictions for each required feature.
            Therefore, to get index into rand_row_weights, we need to divide
-           prediction index by 2 * number of features, and take the floor of this
+           prediction index by number of features, and take the floor of this
          */
         val weight = weights(idx / featureNames.size)
         (feature, marginalContribution, weight)
